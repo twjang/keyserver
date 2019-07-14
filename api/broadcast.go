@@ -9,6 +9,7 @@ import (
 	rpcclient "github.com/tendermint/tendermint/rpc/client"
 )
 
+// Marshal - no-lint
 func (s *Server) Broadcast(w http.ResponseWriter, r *http.Request) {
 	var stdTx auth.StdTx
 	body, err := ioutil.ReadAll(r.Body)
@@ -32,7 +33,7 @@ func (s *Server) Broadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := rpcclient.NewHTTP(s.Node, "/websocket").BroadcastTxAsync(txBytes)
+	res, err := rpcclient.NewHTTP(s.Node, "/websocket").BroadcastTxSync(txBytes)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(newError(err).marshal())

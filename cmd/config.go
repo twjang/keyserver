@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jackzampolin/keyserver/api"
+	"github.com/YunSuk-Yeo/keyserver/api"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"

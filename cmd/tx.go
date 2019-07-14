@@ -21,8 +21,8 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/YunSuk-Yeo/keyserver/api"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/jackzampolin/keyserver/api"
 	"github.com/spf13/cobra"
 )
 

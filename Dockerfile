@@ -1,9 +1,10 @@
 FROM golang:alpine AS build-env
 
 # Injest build args from Makefile
-ARG BINARY=go-boilerplate
-ARG GITHUB_USERNAME=myusername
-ARG GOARCH=amd64
+ARG BINARY
+ARG GITHUB_USERNAME
+ARG GOARCH
+ENV BINARY=${BINARY}
 
 # Set up dependencies
 ENV PACKAGES make git curl
@@ -17,6 +18,9 @@ RUN apk add --update $PACKAGES
 # Install dep
 RUN curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 
+# Force the go compiler to use modules 
+ENV GO111MODULE=on
+
 # Add source files
 COPY . .
 
@@ -25,11 +29,6 @@ RUN make install
 
 # Final image
 FROM alpine:edge
-
-ARG BINARY=go-boilerplate
-ARG GITHUB_USERNAME=myusername
-ARG GOARCH=amd64
-ENV BINARY=${BINARY}
 
 # Install ca-certificates
 RUN apk add --update ca-certificates

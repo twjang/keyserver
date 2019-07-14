@@ -65,6 +65,7 @@ type AddNewKey struct {
 	Index    int    `json:"index,string,omitempty"`
 }
 
+// Marshal - no-lint
 func (ak AddNewKey) Marshal() []byte {
 	out, err := json.Marshal(ak)
 	if err != nil {
@@ -242,6 +243,7 @@ type UpdateKeyBody struct {
 	OldPassword string `json:"old_password"`
 }
 
+// Marshal - no-lint
 func (u UpdateKeyBody) Marshal() []byte {
 	out, err := json.Marshal(u)
 	if err != nil {
@@ -295,6 +297,7 @@ type DeleteKeyBody struct {
 	Password string `json:"password"`
 }
 
+// Marshal - no-lint
 func (u DeleteKeyBody) Marshal() []byte {
 	out, err := json.Marshal(u)
 	if err != nil {
