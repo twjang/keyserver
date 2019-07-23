@@ -1,6 +1,6 @@
 # Keyserver
 
-This is a basic `keyserver` for cosmos-sdk applications. It contains the following routes:
+This is a basic `keyserver` for terra applications. It contains the following routes:
 
 ```
 GET     /version
