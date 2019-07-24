@@ -20,11 +20,11 @@
         <artifactId>json</artifactId>
         <version>20180813</version>
     </dependency>
-    <!-- https://mvnrepository.com/artifact/commons-codec/commons-codec -->
+    <!-- https://mvnrepository.com/artifact/org.bitcoinj/bitcoinj-core -->
     <dependency>
-        <groupId>commons-codec</groupId>
-        <artifactId>commons-codec</artifactId>
-        <version>1.10</version>
+        <groupId>org.bitcoinj</groupId>
+        <artifactId>bitcoinj-core</artifactId>
+        <version>0.15.3</version>
     </dependency>
   </dependencies>
 </project>

@@ -8,14 +8,19 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 import org.json.JSONObject;
-
-// import javax.net.ssl.HttpsURLConnection;
+import org.bitcoinj.core.Bech32;
+import org.bitcoinj.core.Bech32.Bech32Data;
+import org.bitcoinj.core.AddressFormatException;
 
 
 public class App 
 {
     public static void main( String[] args )
     {
+
+        System.out.println("validate abcd: " + validateAddr("abcd"));
+        System.out.println("validate terra1wg2mlrxdmnnkkykgqg4znky86nyrtc45q336yv: " + validateAddr("terra1wg2mlrxdmnnkkykgqg4znky86nyrtc45q336yv"));
+
         final String URL = "http://127.0.0.1:3000";
         
         String sendTx = getSendTx(URL);
@@ -27,7 +32,17 @@ public class App
         System.out.println( signedTx);
         String response = broadcastTx(URL, signedTx);
         System.out.println( response);
+    }
 
+    static private boolean validateAddr(String addr) {
+        
+        try {
+            Bech32Data data = Bech32.decode(addr);
+            return data.hrp != "terra";
+            
+        } catch (AddressFormatException err) {
+            return false;
+        }
     }
 
     static private String getSendTx(String urlStr) {
@@ -40,10 +55,10 @@ public class App
 
 
             JSONObject json = new JSONObject();
-            json.put("sender", "terra1t849fxw7e8ney35mxemh4h3ayea4zf77dslwna");
+            json.put("sender", "terra1wg2mlrxdmnnkkykgqg4znky86nyrtc45q336yv");
             json.put("reciever", "terra1v9ku44wycfnsucez6fp085f5fsksp47u9x8jr4");
             json.put("amount", "1000000uluna");
-            json.put("memo", "937767194");
+            json.put("memo", "1234");
             json.put("chain_id", "columbus-2");
             json.put("gas_adjustment", "1.4");
             json.put("gas_prices", "0.015ukrw");
