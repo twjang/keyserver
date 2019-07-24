@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -58,6 +59,8 @@ func (sb SignBody) StdSignMsg() (stdSign txbldr.StdSignMsg, stdTx auth.StdTx, er
 			Gas:    uint64(stdTx.Fee.Gas),
 		},
 	}
+
+	fmt.Println(sb.ChainID)
 
 	return
 }
