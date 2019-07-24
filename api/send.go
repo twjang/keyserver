@@ -17,9 +17,11 @@ type BankSendBody struct {
 	Sender        sdk.AccAddress `json:"sender"`
 	Reciever      sdk.AccAddress `json:"reciever"`
 	Amount        string         `json:"amount"`
-	ChainID       string         `json:"chain-id"`
+	ChainID       string         `json:"chain_id"`
 	Memo          string         `json:"memo,omitempty"`
 	Fees          string         `json:"fees,omitempty"`
+	Gas           string         `json:"gas,omitempty"`
+	GasPrices     string         `json:"gas_prices,omitempty"`
 	GasAdjustment string         `json:"gas_adjustment,omitempty"`
 }
 
@@ -32,6 +34,7 @@ func (sb BankSendBody) Marshal() []byte {
 	return out
 }
 
+// TODO - query epoch & query tax-rate & query tax-cap & compute fee (stability & gas)
 // BankSend handles the /tx/bank/send route
 func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 	var sb BankSendBody
@@ -59,6 +62,12 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 
 	var fees sdk.Coins
 	if sb.Fees != "" {
+		if sb.GasPrices != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write(newError(fmt.Errorf("GasPrices and Fees cannot be used at the same time")).marshal())
+			return
+		}
+
 		fees, err = sdk.ParseCoins(sb.Fees)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -74,11 +83,16 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 		sb.Memo,
 	)
 
-	gas, err := s.SimulateGas(cdc.MustMarshalBinaryLengthPrefixed(stdTx))
+	var gas uint64
+	if sb.Gas != "" {
+		gas, err = strconv.ParseUint(sb.Gas, 10, 64)
+	} else {
+		gas, err = s.SimulateGas(cdc.MustMarshalBinaryLengthPrefixed(stdTx))
+	}
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write(newError(err).marshal())
+		w.Write(newError(fmt.Errorf("failed to parse gas %s into uint64", sb.Gas)).marshal())
 		return
 	}
 
@@ -90,6 +104,23 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		gas = uint64(adj * float64(gas))
+	}
+
+	if sb.GasPrices != "" {
+		gasPrices, err := sdk.ParseDecCoins(sb.GasPrices)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write(newError(fmt.Errorf("failed to parse gasPrices %s into sdk.DecCoins", sb.GasPrices)).marshal())
+			return
+		}
+
+		var fees sdk.Coins
+		for _, gasPrice := range gasPrices {
+			fee := sdk.NewCoin(gasPrice.Denom, gasPrice.Amount.MulInt64(int64(gas)).TruncateInt())
+			fees = append(fees, fee)
+		}
+
+		stdTx.Fee.Amount = fees.Sort()
 	}
 
 	stdTx = auth.NewStdTx(
