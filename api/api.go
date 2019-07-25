@@ -68,6 +68,7 @@ func (s *Server) Router() *mux.Router {
 	router.HandleFunc("/tx/sign", s.Sign).Methods("POST")
 	router.HandleFunc("/tx/broadcast", s.Broadcast).Methods("POST")
 	router.HandleFunc("/tx/bank/send", s.BankSend).Methods("POST")
+	router.HandleFunc("/tx/encode", s.EncodeTx).Methods("POST")
 
 	return router
 }

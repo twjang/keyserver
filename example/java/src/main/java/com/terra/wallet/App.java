@@ -6,11 +6,14 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+// import java.util.Base64;
 
 import org.json.JSONObject;
 import org.bitcoinj.core.Bech32;
 import org.bitcoinj.core.Bech32.Bech32Data;
 import org.bitcoinj.core.AddressFormatException;
+import org.bitcoinj.core.Sha256Hash;
+import org.apache.commons.codec.binary.Hex;
 
 
 public class App 
@@ -30,6 +33,10 @@ public class App
 
         String signedTx = getSignedTx(URL, sendTx);
         System.out.println( signedTx);
+
+        String encodeRes = encodeTx(URL, signedTx);
+        System.out.println( encodeRes );
+        
         String response = broadcastTx(URL, signedTx);
         System.out.println( response);
     }
@@ -59,7 +66,7 @@ public class App
             json.put("reciever", "terra1v9ku44wycfnsucez6fp085f5fsksp47u9x8jr4");
             json.put("amount", "1000000uluna");
             json.put("memo", "1234");
-            json.put("chain_id", "columbus-2");
+            json.put("chain_id", "vodka");
             json.put("gas_adjustment", "1.4");
             json.put("gas_prices", "0.015ukrw");
 
@@ -99,7 +106,6 @@ public class App
             
             con.setRequestMethod("POST");
             con.setDoOutput(true);
-
 
             JSONObject json = new JSONObject();
             json.put("tx",  new JSONObject(tx));
@@ -141,6 +147,46 @@ public class App
     static private String broadcastTx(String urlStr, String signedTx) {
         try {
             URL url = new URL(urlStr + "/tx/broadcast");
+            HttpURLConnection con = (HttpURLConnection) url.openConnection();
+            
+            con.setRequestMethod("POST");
+            con.setDoOutput(true);
+
+
+            JSONObject json = new JSONObject(signedTx);
+
+            DataOutputStream wr = new DataOutputStream(con.getOutputStream()); 
+            wr.writeBytes(json.toString()); 
+            wr.flush(); 
+            wr.close(); 
+
+            int responseCode = con.getResponseCode(); 
+            BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream())); 
+            String inputLine; StringBuffer response = new StringBuffer(); 
+            
+            while ((inputLine = in.readLine()) != null) { 
+                response.append(inputLine); 
+            } 
+            
+            in.close(); 
+
+            if (responseCode == 200) {
+                return response.toString();
+            }
+
+            System.out.println("Failed to Get Msg; Status Code " + responseCode);
+            System.out.println("Response: " + response);
+            
+        } catch (IOException ex) {
+            System.out.println(ex.getMessage());
+        }
+
+        return "";
+    }
+
+    static private String encodeTx(String urlStr, String signedTx) {
+        try {
+            URL url = new URL(urlStr + "/tx/encode");
             HttpURLConnection con = (HttpURLConnection) url.openConnection();
             
             con.setRequestMethod("POST");

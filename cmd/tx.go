@@ -64,6 +64,34 @@ var broadcastCmd = &cobra.Command{
 	},
 }
 
+var encodeCmd = &cobra.Command{
+	Use:   "encode [file]",
+	Short: "encode a signed transaction",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		txData, err := ioutil.ReadFile(args[0])
+		if err != nil {
+			log.Fatal("error reading transaction file")
+		}
+		url := fmt.Sprintf("http://localhost:%d/tx/encode", server.Port)
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(txData))
+		if err != nil {
+			log.Fatalf("error fetching %s", url)
+			return
+		}
+		out, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatalf("failed reading response body")
+			return
+		}
+		if resp.StatusCode != 200 {
+			log.Fatalf("non 200 respose code %d, error: %s", resp.StatusCode, string(out))
+			return
+		}
+		fmt.Println(string(out))
+	},
+}
+
 // versionCmd represents the version command
 var sendCmd = &cobra.Command{
 	Use:   "send [sender] [reciever] [amount] [chain-id] [memo] [fees] [gas-adjustment]",
@@ -176,6 +204,7 @@ func init() {
 	txCmd.AddCommand(txSign)
 	txCmd.AddCommand(bankCmd)
 	txCmd.AddCommand(broadcastCmd)
+	txCmd.AddCommand(encodeCmd)
 	bankCmd.AddCommand(sendCmd)
 	rootCmd.AddCommand(txCmd)
 }
