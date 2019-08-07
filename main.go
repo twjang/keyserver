@@ -14,7 +14,7 @@
 
 package main
 
-import "github.com/YunSuk-Yeo/keyserver/cmd"
+import "github.com/terra-project/keyserver/cmd"
 
 func main() {
 	cmd.Execute()

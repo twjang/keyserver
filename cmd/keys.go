@@ -21,8 +21,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/YunSuk-Yeo/keyserver/api"
 	"github.com/spf13/cobra"
+	"github.com/terra-project/keyserver/api"
 )
 
 // versionCmd represents the version command

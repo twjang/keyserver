@@ -18,10 +18,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/YunSuk-Yeo/keyserver/api"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/terra-project/keyserver/api"
 )
 
 var (

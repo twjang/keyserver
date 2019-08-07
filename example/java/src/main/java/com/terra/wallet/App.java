@@ -12,9 +12,6 @@ import org.json.JSONObject;
 import org.bitcoinj.core.Bech32;
 import org.bitcoinj.core.Bech32.Bech32Data;
 import org.bitcoinj.core.AddressFormatException;
-import org.bitcoinj.core.Sha256Hash;
-import org.apache.commons.codec.binary.Hex;
-
 
 public class App 
 {

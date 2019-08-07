@@ -1,4 +1,4 @@
-module github.com/YunSuk-Yeo/keyserver
+module github.com/terra-project/keyserver
 
 go 1.12
 
