@@ -63,7 +63,7 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fees := sdk.NewCoins()
+	var fees sdk.Coins
 	if sb.Fees != "" {
 		if sb.GasPrices != "" {
 			w.WriteHeader(http.StatusBadRequest)
@@ -79,9 +79,10 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// dummy fee & dummy gas limit
 	stdTx := auth.NewStdTx(
 		[]sdk.Msg{bank.MsgSend{FromAddress: sb.Sender, ToAddress: sb.Reciever, Amount: coins}},
-		auth.NewStdFee(client.DefaultGasLimit, fees),
+		auth.NewStdFee(client.DefaultGasLimit, sdk.NewCoins(sdk.NewInt64Coin(core.MicroLunaDenom, core.MicroUnit))),
 		[]auth.StdSignature{{}},
 		sb.Memo,
 	)
@@ -125,47 +126,49 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 		fees = fees.Sort()
 	}
 
-	// Compute Tax
-	currentEpoch, err := s.LoadCurrentEpoch()
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-
-		w.Write([]byte(sdk.AppendMsgToErr("failed to load current epoch", err.Error())))
-		return
-	}
-
-	taxRate, err := s.LoadTaxRate(currentEpoch)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-
-		w.Write([]byte(sdk.AppendMsgToErr("failed to load tax rate", err.Error())))
-		return
-	}
-
-	var taxes sdk.Coins
-	for _, coin := range coins {
-		if coin.Denom == core.MicroLunaDenom {
-			continue
-		}
-
-		taxCap, err := s.LoadTaxCap(coin.Denom)
+	if sb.Fees == "" {
+		// Compute Tax
+		currentEpoch, err := s.LoadCurrentEpoch()
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 
-			w.Write([]byte(sdk.AppendMsgToErr("failed to load tax cap", err.Error())))
+			w.Write([]byte(sdk.AppendMsgToErr("failed to load current epoch", err.Error())))
 			return
 		}
 
-		taxDue := taxRate.MulInt(coin.Amount).TruncateInt()
-		if taxDue.GT(taxCap) {
-			taxDue = taxCap
+		taxRate, err := s.LoadTaxRate(currentEpoch)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+
+			w.Write([]byte(sdk.AppendMsgToErr("failed to load tax rate", err.Error())))
+			return
 		}
 
-		taxes = append(taxes, sdk.NewCoin(coin.Denom, taxDue))
-	}
+		var taxes sdk.Coins
+		for _, coin := range coins {
+			if coin.Denom == core.MicroLunaDenom {
+				continue
+			}
 
-	taxes = taxes.Sort()
-	fees = taxes.Add(fees)
+			taxCap, err := s.LoadTaxCap(coin.Denom)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+
+				w.Write([]byte(sdk.AppendMsgToErr("failed to load tax cap", err.Error())))
+				return
+			}
+
+			taxDue := taxRate.MulInt(coin.Amount).TruncateInt()
+			if taxDue.GT(taxCap) {
+				taxDue = taxCap
+			}
+
+			taxes = append(taxes, sdk.NewCoin(coin.Denom, taxDue))
+		}
+
+		taxes = taxes.Sort()
+		fees = taxes.Add(fees)
+	}
 
 	stdTx = auth.NewStdTx(
 		stdTx.Msgs,
