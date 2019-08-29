@@ -7,9 +7,12 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/cosmos/cosmos-sdk/client"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/cosmos/cosmos-sdk/x/bank"
+
+	core "github.com/terra-project/core/types"
 )
 
 // BankSendBody contains the necessary data to make a send transaction
@@ -60,7 +63,7 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var fees sdk.Coins
+	fees := sdk.NewCoins()
 	if sb.Fees != "" {
 		if sb.GasPrices != "" {
 			w.WriteHeader(http.StatusBadRequest)
@@ -77,8 +80,8 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stdTx := auth.NewStdTx(
-		[]sdk.Msg{bank.NewMsgSend(sb.Sender, sb.Reciever, coins)},
-		auth.NewStdFee(20000, fees),
+		[]sdk.Msg{bank.MsgSend{FromAddress: sb.Sender, ToAddress: sb.Reciever, Amount: coins}},
+		auth.NewStdFee(client.DefaultGasLimit, fees),
 		[]auth.StdSignature{{}},
 		sb.Memo,
 	)
@@ -114,18 +117,59 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var fees sdk.Coins
 		for _, gasPrice := range gasPrices {
 			fee := sdk.NewCoin(gasPrice.Denom, gasPrice.Amount.MulInt64(int64(gas)).TruncateInt())
 			fees = append(fees, fee)
 		}
 
-		stdTx.Fee.Amount = fees.Sort()
+		fees = fees.Sort()
 	}
+
+	// Compute Tax
+	currentEpoch, err := s.LoadCurrentEpoch()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+
+		w.Write([]byte(sdk.AppendMsgToErr("failed to load current epoch", err.Error())))
+		return
+	}
+
+	taxRate, err := s.LoadTaxRate(currentEpoch)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+
+		w.Write([]byte(sdk.AppendMsgToErr("failed to load tax rate", err.Error())))
+		return
+	}
+
+	var taxes sdk.Coins
+	for _, coin := range coins {
+		if coin.Denom == core.MicroLunaDenom {
+			continue
+		}
+
+		taxCap, err := s.LoadTaxCap(coin.Denom)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+
+			w.Write([]byte(sdk.AppendMsgToErr("failed to load tax cap", err.Error())))
+			return
+		}
+
+		taxDue := taxRate.MulInt(coin.Amount).TruncateInt()
+		if taxDue.GT(taxCap) {
+			taxDue = taxCap
+		}
+
+		taxes = append(taxes, sdk.NewCoin(coin.Denom, taxDue))
+	}
+
+	taxes = taxes.Sort()
+	fees = taxes.Add(fees)
 
 	stdTx = auth.NewStdTx(
 		stdTx.Msgs,
-		auth.NewStdFee(gas, stdTx.Fee.Amount),
+		auth.NewStdFee(gas, fees),
 		[]auth.StdSignature{},
 		stdTx.Memo,
 	)
