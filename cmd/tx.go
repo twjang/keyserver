@@ -94,9 +94,9 @@ var encodeCmd = &cobra.Command{
 
 // versionCmd represents the version command
 var sendCmd = &cobra.Command{
-	Use:   "send [sender] [reciever] [amount] [chain-id] [memo] [fees] [gas-adjustment]",
+	Use:   "send [sender] [reciever] [amount] [chain-id] [memo] [fees] [gas-prices] [gas-adjustment]",
 	Short: "generate a send transaction",
-	Args:  cobra.RangeArgs(4, 7),
+	Args:  cobra.RangeArgs(4, 8),
 	Run: func(cmd *cobra.Command, args []string) {
 		var bs api.BankSendBody
 		send, err := sdk.AccAddressFromBech32(args[0])
@@ -135,13 +135,22 @@ var sendCmd = &cobra.Command{
 			}
 		case 7:
 			bs = api.BankSendBody{
+				Sender:    send,
+				Reciever:  recv,
+				Amount:    args[2],
+				ChainID:   args[3],
+				Memo:      args[4],
+				GasPrices: args[6],
+			}
+		case 8:
+			bs = api.BankSendBody{
 				Sender:        send,
 				Reciever:      recv,
 				Amount:        args[2],
 				ChainID:       args[3],
 				Memo:          args[4],
-				Fees:          args[5],
-				GasAdjustment: args[6],
+				GasPrices:     args[6],
+				GasAdjustment: args[7],
 			}
 		}
 		url := fmt.Sprintf("http://localhost:%d/tx/bank/send", server.Port)

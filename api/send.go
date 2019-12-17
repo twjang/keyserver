@@ -128,15 +128,7 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 
 	if sb.Fees == "" {
 		// Compute Tax
-		currentEpoch, err := s.LoadCurrentEpoch()
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-
-			w.Write([]byte(sdk.AppendMsgToErr("failed to load current epoch", err.Error())))
-			return
-		}
-
-		taxRate, err := s.LoadTaxRate(currentEpoch)
+		taxRate, err := s.LoadTaxRate()
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 

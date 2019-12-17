@@ -99,40 +99,11 @@ func (s *Server) SimulateGas(txbytes []byte) (res uint64, err error) {
 	return simulationResult.GasUsed, nil
 }
 
-// LoadCurrentEpoch load current epoch
-func (s *Server) LoadCurrentEpoch() (res int64, err error) {
-	result, err := rpcclient.NewHTTP(s.Node, "/websocket").ABCIQueryWithOptions(
-		"custom/treasury/currentEpoch",
-		[]byte{},
-		rpcclient.ABCIQueryOptions{},
-	)
-	if err != nil {
-		return
-	}
-
-	if !result.Response.IsOK() {
-		return 0, errors.New(result.Response.Log)
-	}
-
-	var currentEpoch int64
-	if err := cdc.UnmarshalJSON(result.Response.Value, &currentEpoch); err != nil {
-		return 0, err
-	}
-
-	return currentEpoch, nil
-}
-
 // LoadTaxRate load tax-rate
-func (s *Server) LoadTaxRate(epoch int64) (res sdk.Dec, err error) {
-	params := treasury.NewQueryTaxRateParams(epoch)
-	bz, err := cdc.MarshalJSON(params)
-	if err != nil {
-		return sdk.ZeroDec(), err
-	}
-
+func (s *Server) LoadTaxRate() (res sdk.Dec, err error) {
 	result, err := rpcclient.NewHTTP(s.Node, "/websocket").ABCIQueryWithOptions(
 		"custom/treasury/taxRate",
-		cmn.HexBytes(bz),
+		[]byte{},
 		rpcclient.ABCIQueryOptions{},
 	)
 	if err != nil {

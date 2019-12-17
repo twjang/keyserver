@@ -47,7 +47,7 @@ Then you can use the included CLI to create keys, use the mnemonics to create th
 In another window, generate the transaction to sign, sign it and broadcast:
 ```bash
 > mkdir -p test_data
-> keyserver tx bank send $(keyserver keys show yun | jq -r .address) $(keyserver keys show jim | jq -r .address) 10000stake testing "memo" 10stake > test_data/unsigned.json
+> keyserver tx bank send $(keyserver keys show yun | jq -r .address) $(keyserver keys show jim | jq -r .address) 10000stake testing "memo" 10stake 1.4 > test_data/unsigned.json
 > keyserver tx sign yun foobarbaz testing 0 1 test_data/unsigned.json > test_data/signed.json
 > keyserver tx broadcast test_data/signed.json
 {"height":"0","txhash":"84CEF8B7FD04DA6FE9C22A6077D8286FA7775CAA0BB06D1D875AE9527A3D15CB"}
