@@ -9,13 +9,13 @@ import (
 	"github.com/tendermint/tendermint/crypto/tmhash"
 )
 
-// EncodeResopnse nolint
+// EncodeResponse nolint
 type EncodeResponse struct {
 	TxBytes string `json:"txbytes"`
 	TxID    string `json:"txid"`
 }
 
-// Marshal - no-lint
+// EncodeTx - no-lint
 func (s *Server) EncodeTx(w http.ResponseWriter, r *http.Request) {
 	var stdTx auth.StdTx
 	body, err := ioutil.ReadAll(r.Body)

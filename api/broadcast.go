@@ -9,7 +9,7 @@ import (
 	rpcclient "github.com/tendermint/tendermint/rpc/client"
 )
 
-// Marshal - no-lint
+// Broadcast - no-lint
 func (s *Server) Broadcast(w http.ResponseWriter, r *http.Request) {
 	var stdTx auth.StdTx
 	body, err := ioutil.ReadAll(r.Body)

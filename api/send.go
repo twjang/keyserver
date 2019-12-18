@@ -37,7 +37,6 @@ func (sb BankSendBody) Marshal() []byte {
 	return out
 }
 
-// TODO - query epoch & query tax-rate & query tax-cap & compute fee (stability & gas)
 // BankSend handles the /tx/bank/send route
 func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 	var sb BankSendBody
@@ -80,9 +79,16 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// dummy fee & dummy gas limit
+	var feesForSim sdk.Coins
+	if fees.Empty() {
+		feesForSim = sdk.NewCoins(sdk.NewCoin(coins[0].Denom, sdk.NewInt(1)))
+	} else {
+		feesForSim = sdk.NewCoins(fees...)
+	}
+
 	stdTx := auth.NewStdTx(
 		[]sdk.Msg{bank.MsgSend{FromAddress: sb.Sender, ToAddress: sb.Reciever, Amount: coins}},
-		auth.NewStdFee(client.DefaultGasLimit, sdk.NewCoins(sdk.NewInt64Coin(core.MicroLunaDenom, core.MicroUnit))),
+		auth.NewStdFee(client.DefaultGasLimit, feesForSim),
 		[]auth.StdSignature{{}},
 		sb.Memo,
 	)
@@ -119,7 +125,7 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for _, gasPrice := range gasPrices {
-			fee := sdk.NewCoin(gasPrice.Denom, gasPrice.Amount.MulInt64(int64(gas)).TruncateInt())
+			fee := sdk.NewCoin(gasPrice.Denom, gasPrice.Amount.MulInt64(int64(gas)).Ceil().TruncateInt())
 			fees = append(fees, fee)
 		}
 
