@@ -1,7 +1,7 @@
 BINARY            = keyserver
-GITHUB_USERNAME   = YunSuk-Yeo
-DOCKER_REPO       = quay.io/yunsuk_yeo
-VERSION           = v0.1.0
+GITHUB_USERNAME   = terra-project
+DOCKER_REPO       = quay.io/terra_project
+VERSION           = v0.2.0
 GOARCH            = amd64
 ARTIFACT_DIR      = build
 PORT 							= 3000
