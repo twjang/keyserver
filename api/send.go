@@ -102,7 +102,7 @@ func (s *Server) BankSend(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write(newError(fmt.Errorf("failed to parse gas %s into uint64", sb.Gas)).marshal())
+		w.Write(newError(fmt.Errorf("failed to parse gas %s into uint64; %s", sb.Gas, err.Error())).marshal())
 		return
 	}
 
