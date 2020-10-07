@@ -1,12 +1,12 @@
 package api
 
 import (
+	httpRpcClient "github.com/tendermint/tendermint/rpc/client/http"
 	"io/ioutil"
 	"net/http"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
 )
 
 // Broadcast - no-lint
@@ -33,7 +33,12 @@ func (s *Server) Broadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := rpcclient.NewHTTP(s.Node, "/websocket").BroadcastTxSync(txBytes)
+	client, err := httpRpcClient.New(s.Node, "/websocket")
+	if err != nil {
+		return
+	}
+
+	res, err := client.BroadcastTxSync(txBytes)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(newError(err).marshal())

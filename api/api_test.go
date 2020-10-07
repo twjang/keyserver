@@ -65,8 +65,10 @@ func TestGetKeys(t *testing.T) {
 	require.Equal(t, keys[0].Name, testKey)
 
 	// TestUpdateKey bad path
+	// Cosmos-sdk v0.39.1 returns 'ciphertext decryption failed' error when wrong passwords were given.
+	// And this error cannot be detected by keyerror.IsErrWrongPassword func.
 	badUpdatePass := UpdateKeyBody{OldPassword: testKey, NewPassword: testPassAlt}
-	wrongPass := unmarshalError(putRoute(t, fmt.Sprintf("%s/keys/%s", server.URL, testKey), badUpdatePass.Marshal(), 401))
+	wrongPass := unmarshalError(putRoute(t, fmt.Sprintf("%s/keys/%s", server.URL, testKey), badUpdatePass.Marshal(), 500))
 	require.NotEmpty(t, wrongPass.Error)
 
 	// TestUpdateKey happy path
@@ -76,7 +78,7 @@ func TestGetKeys(t *testing.T) {
 
 	// Test delete key bad path
 	deleteKey := DeleteKeyBody{Password: testPass}
-	badPath := unmarshalError(deleteRoute(t, fmt.Sprintf("%s/keys/%s", server.URL, testKey), deleteKey.Marshal(), 401))
+	badPath := unmarshalError(deleteRoute(t, fmt.Sprintf("%s/keys/%s", server.URL, testKey), deleteKey.Marshal(), 500))
 	require.NotEmpty(t, badPath.Error)
 
 	// Test delete key happy path
@@ -139,6 +141,9 @@ func postRoute(t *testing.T, route string, data []byte, expStatus int) []byte {
 		t.Fatal(err)
 	}
 	if resp.StatusCode != expStatus {
+		body := make ([]byte, 1024)
+		resp.Body.Read(body)
+		t.Log(string(body))
 		t.Fatalf("Expected status '%d', got '%d'\n", expStatus, resp.StatusCode)
 	}
 	out, err := ioutil.ReadAll(resp.Body)
@@ -160,6 +165,9 @@ func putRoute(t *testing.T, route string, data []byte, expStatus int) []byte {
 	}
 
 	if resp.StatusCode != expStatus {
+		body := make ([]byte, 1024)
+		resp.Body.Read(body)
+		t.Log(string(body))
 		t.Fatalf("Expected status '%d', got '%d'\n", expStatus, resp.StatusCode)
 	}
 	out, err := ioutil.ReadAll(resp.Body)
@@ -181,6 +189,9 @@ func deleteRoute(t *testing.T, route string, data []byte, expStatus int) []byte 
 	}
 
 	if resp.StatusCode != expStatus {
+		body := make ([]byte, 1024)
+		resp.Body.Read(body)
+		t.Log(string(body))
 		t.Fatalf("Expected status '%d', got '%d'\n", expStatus, resp.StatusCode)
 	}
 	out, err := ioutil.ReadAll(resp.Body)

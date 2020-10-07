@@ -1,7 +1,7 @@
 BINARY            = keyserver
 GITHUB_USERNAME   = terra-project
 DOCKER_REPO       = quay.io/terra_project
-VERSION           = v0.2.0
+VERSION           = v0.2.1
 GOARCH            = amd64
 ARTIFACT_DIR      = build
 PORT 							= 3000

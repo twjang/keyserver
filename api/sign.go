@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cosmos/cosmos-sdk/x/auth/types"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -103,10 +104,17 @@ func (s *Server) Sign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sigs := append(stdTx.GetSignatures(), auth.StdSignature{
-		PubKey:    pubkey,
-		Signature: sigBytes,
-	})
+	pubkeys := append(stdTx.GetPubKeys(), pubkey)
+	sigbytes := append(stdTx.GetSignatures(), sigBytes)
+
+	sigs := make([]types.StdSignature, 0)
+
+	for i:=0; i< len(pubkeys); i++ {
+		sigs = append(sigs, auth.StdSignature{
+			PubKey: pubkeys[i],
+			Signature: sigbytes[i],
+		})
+	}
 
 	signedStdTx := auth.NewStdTx(stdTx.GetMsgs(), stdTx.Fee, sigs, stdTx.GetMemo())
 	out, err := cdc.MarshalJSON(signedStdTx)

@@ -138,7 +138,9 @@ func (s *Server) PostKeys(w http.ResponseWriter, r *http.Request) {
 
 	account := uint32(m.Account)
 	index := uint32(m.Index)
-	info, err := kb.CreateAccount(m.Name, mnemonic, ckeys.DefaultBIP39Passphrase, m.Password, account, index)
+
+	hdpath := fmt.Sprintf("44'/330'/%d'/0/%d", account, index)
+	info, err := kb.CreateAccount(m.Name, mnemonic, ckeys.DefaultBIP39Passphrase, m.Password, hdpath, ckeys.Secp256k1)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(newError(err).marshal())
