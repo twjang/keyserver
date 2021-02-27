@@ -38,6 +38,7 @@ type Server struct {
 	Branch  string `yaml:"branch,omitempty"`
 
 	// Server only supports file backend
+	RootDir    string `json:"root_dir"`
 	KeyringDir string `json:"keyring_dir"`
 }
 

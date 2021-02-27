@@ -37,8 +37,17 @@ var configCmd = &cobra.Command{
 
 		s := api.Server{
 			Port:       3000,
+			RootDir:    fmt.Sprintf("%s/.keyserver", home),
 			KeyringDir: fmt.Sprintf("%s/.gaia", home),
 			Node:       "http://localhost:26657",
+		}
+
+		if _, err := os.Stat(s.RootDir); os.IsNotExist(err) {
+			err := os.MkdirAll(s.RootDir, 0777)
+			if err != nil {
+				fmt.Println("Error creating directory:", err)
+				return
+			}
 		}
 
 		if _, err := os.Stat(s.KeyringDir); os.IsNotExist(err) {
@@ -49,7 +58,7 @@ var configCmd = &cobra.Command{
 			}
 		}
 
-		conf := fmt.Sprintf("%s/config.yaml", s.KeyringDir)
+		conf := fmt.Sprintf("%s/config.yaml", s.RootDir)
 		if _, err := os.Stat(conf); os.IsNotExist(err) {
 			out, err := yaml.Marshal(s)
 			if err != nil {
