@@ -37,7 +37,7 @@ var configCmd = &cobra.Command{
 
 		s := api.Server{
 			Port:       3000,
-			KeyringDir: fmt.Sprintf("%s/.keyserver", home),
+			KeyringDir: fmt.Sprintf("%s/.gaia", home),
 			Node:       "http://localhost:26657",
 		}
 
