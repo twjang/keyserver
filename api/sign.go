@@ -2,15 +2,12 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
-	"github.com/cosmos/cosmos-sdk/x/auth/types"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 
-	"github.com/cosmos/cosmos-sdk/client/keys"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/auth"
+	"github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 )
 
 // SignBody is the body for a sign request
@@ -32,49 +29,9 @@ func (sb SignBody) Marshal() []byte {
 	return out
 }
 
-// StdSignMsg returns a StdSignMsg from a SignBody request
-func (sb SignBody) StdSignMsg() (stdSign auth.StdSignMsg, stdTx auth.StdTx, err error) {
-	err = cdc.UnmarshalJSON(sb.Tx, &stdTx)
-	if err != nil {
-		return
-	}
-	acc, err := strconv.ParseInt(sb.AccountNumber, 10, 64)
-	if err != nil {
-		return
-	}
-
-	seq, err := strconv.ParseInt(sb.Sequence, 10, 64)
-	if err != nil {
-		return
-	}
-
-	stdSign = auth.StdSignMsg{
-		Memo:          stdTx.Memo,
-		Msgs:          stdTx.Msgs,
-		ChainID:       sb.ChainID,
-		AccountNumber: uint64(acc),
-		Sequence:      uint64(seq),
-		Fee: auth.StdFee{
-			Amount: stdTx.Fee.Amount,
-			Gas:    uint64(stdTx.Fee.Gas),
-		},
-	}
-
-	fmt.Println(sb.ChainID)
-
-	return
-}
-
 // Sign handles the /tx/sign route
 func (s *Server) Sign(w http.ResponseWriter, r *http.Request) {
 	var m SignBody
-
-	kb, err := keys.NewKeyBaseFromDir(s.KeyDir)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write(newError(err).marshal())
-		return
-	}
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -83,41 +40,120 @@ func (s *Server) Sign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = cdc.UnmarshalJSON(body, &m)
+	err = json.Unmarshal(body, &m)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(newError(err).marshal())
 		return
 	}
 
-	stdSign, stdTx, err := m.StdSignMsg()
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write(newError(err).marshal())
-		return
-	}
+	keyringWrapper, err := s.GetKeyringWrapper(m.Passphrase)
+	defer keyringWrapper.Cleanup()
 
-	sigBytes, pubkey, err := kb.Sign(m.Name, m.Passphrase, sdk.MustSortJSON(cdc.MustMarshalJSON(stdSign)))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write(newError(err).marshal())
 		return
 	}
 
-	pubkeys := append(stdTx.GetPubKeys(), pubkey)
-	sigbytes := append(stdTx.GetSignatures(), sigBytes)
+	keyring := keyringWrapper.Keyring
 
-	sigs := make([]types.StdSignature, 0)
-
-	for i:=0; i< len(pubkeys); i++ {
-		sigs = append(sigs, auth.StdSignature{
-			PubKey: pubkeys[i],
-			Signature: sigbytes[i],
-		})
+	key, err := keyring.Key(m.Name)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(newError(err).marshal())
 	}
 
-	signedStdTx := auth.NewStdTx(stdTx.GetMsgs(), stdTx.Fee, sigs, stdTx.GetMemo())
-	out, err := cdc.MarshalJSON(signedStdTx)
+	acc, err := strconv.ParseUint(m.AccountNumber, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(newError(err).marshal())
+	}
+
+	seq, err := strconv.ParseUint(m.Sequence, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(newError(err).marshal())
+		return
+	}
+
+	pubKey := key.GetPubKey()
+	signerData := authsigning.SignerData{
+		ChainID:       m.ChainID,
+		AccountNumber: acc,
+		Sequence:      seq,
+	}
+
+	// For SIGN_MODE_DIRECT, calling SetSignatures calls setSignerInfos on
+	// TxBuilder under the hood, and SignerInfos is needed to generated the
+	// sign bytes. This is the reason for setting SetSignatures here, with a
+	// nil signature.
+	//
+	// Note: this line is not needed for SIGN_MODE_LEGACY_AMINO, but putting it
+	// also doesn't affect its generated sign bytes, so for code's simplicity
+	// sake, we put it here.
+
+	signMode := encodingConfig.TxConfig.SignModeHandler().DefaultMode()
+
+	sigData := signing.SingleSignatureData{
+		SignMode:  signMode,
+		Signature: nil,
+	}
+	sig := signing.SignatureV2{
+		PubKey:   pubKey,
+		Data:     &sigData,
+		Sequence: seq,
+	}
+
+	tx, err := encodingConfig.TxConfig.TxJSONDecoder()(m.Tx)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(newError(err).marshal())
+		return
+	}
+	txBuilder, err := encodingConfig.TxConfig.WrapTxBuilder(tx)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(newError(err).marshal())
+		return
+	}
+	err = txBuilder.SetSignatures(sig)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write(newError(err).marshal())
+		return
+	}
+
+	// Generate the bytes to be signed.
+	bytesToSign, err := encodingConfig.TxConfig.SignModeHandler().GetSignBytes(sigData.SignMode, signerData, txBuilder.GetTx())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write(newError(err).marshal())
+		return
+	}
+
+	// Sign those bytes
+	sigBytes, _, err := keyring.Sign(m.Name, bytesToSign)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write(newError(err).marshal())
+		return
+	}
+
+	// Construct the SignatureV2 struct
+	sigData = signing.SingleSignatureData{
+		SignMode:  signMode,
+		Signature: sigBytes,
+	}
+	sig = signing.SignatureV2{
+		PubKey:   pubKey,
+		Data:     &sigData,
+		Sequence: seq,
+	}
+
+	txBuilder.SetSignatures(sig)
+	out, err := encodingConfig.TxConfig.TxJSONEncoder()(txBuilder.GetTx())
+
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write(newError(err).marshal())

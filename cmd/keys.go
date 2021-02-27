@@ -16,13 +16,14 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 
 	"github.com/spf13/cobra"
-	"github.com/terra-project/keyserver/api"
+	"github.com/twjang/keyserver/api"
 )
 
 // versionCmd represents the version command
@@ -31,13 +32,22 @@ var keysCmd = &cobra.Command{
 	Short: "Runs keys calls",
 }
 
-// /keys GET
-var keysGet = &cobra.Command{
-	Use:   "get",
+// /keys/list POST
+var keysList = &cobra.Command{
+	Use:   "list [password]",
+	Args:  cobra.ExactArgs(1),
 	Short: "Fetch all keys managed by the keyserver",
 	Run: func(cmd *cobra.Command, args []string) {
-		url := fmt.Sprintf("http://localhost:%d/keys", server.Port)
-		resp, err := http.Get(url)
+		url := fmt.Sprintf("http://localhost:%d/keys/list", server.Port)
+		req := api.GetKeyBody{
+			Password: args[0],
+		}
+		reqbytes, err := json.Marshal(req)
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(reqbytes))
 		if err != nil {
 			log.Fatalf("error fetching %s", url)
 			return
@@ -55,18 +65,18 @@ var keysGet = &cobra.Command{
 	},
 }
 
-// /keys POST
+// /keys/create POST
 var keysPost = &cobra.Command{
-	Use:   "post [name] [password] [mnemonic]",
+	Use:   "create [password] [name] [mnemonic]",
 	Args:  cobra.RangeArgs(2, 3),
 	Short: "Add a new key to the keyserver, optionally pass a mnemonic to restore the key",
 	Run: func(cmd *cobra.Command, args []string) {
-		url := fmt.Sprintf("http://localhost:%d/keys", server.Port)
+		url := fmt.Sprintf("http://localhost:%d/keys/create", server.Port)
 		var addNP api.AddNewKey
 		if len(args) == 2 {
-			addNP = api.AddNewKey{Name: args[0], Password: args[1]}
+			addNP = api.AddNewKey{Name: args[1], Password: args[0]}
 		} else if len(args) == 3 {
-			addNP = api.AddNewKey{Name: args[0], Password: args[1], Mnemonic: args[2]}
+			addNP = api.AddNewKey{Name: args[1], Password: args[0], Mnemonic: args[2]}
 		}
 
 		resp, err := http.Post(url, "application/json", bytes.NewBuffer(addNP.Marshal()))
@@ -87,14 +97,23 @@ var keysPost = &cobra.Command{
 	},
 }
 
-// /keys/{name} GET
+// /keys/get/{name} POST
 var keyGet = &cobra.Command{
-	Use:   "show [name]",
-	Args:  cobra.ExactArgs(1),
+	Use:   "show [password] [name]",
+	Args:  cobra.ExactArgs(2),
 	Short: "Fetch details for one key",
 	Run: func(cmd *cobra.Command, args []string) {
-		url := fmt.Sprintf("http://localhost:%d/keys/%s", server.Port, args[0])
-		resp, err := http.Get(url)
+		req := api.GetKeyBody{
+			Password: args[0],
+		}
+		reqbytes, err := json.Marshal(req)
+		if err != nil {
+			panic(err)
+		}
+
+		url := fmt.Sprintf("http://localhost:%d/keys/get/%s", server.Port, args[1])
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(reqbytes))
+
 		if err != nil {
 			log.Fatalf("error fetching %s", url)
 			return
@@ -112,53 +131,15 @@ var keyGet = &cobra.Command{
 	},
 }
 
-// /keys/{name} PUT
-var keyPut = &cobra.Command{
-	Use:   "put [name] [oldpass] [newpass]",
-	Args:  cobra.ExactArgs(3),
-	Short: "Update the password on a key",
-	Run: func(cmd *cobra.Command, args []string) {
-		url := fmt.Sprintf("http://localhost:%d/keys/%s", server.Port, args[0])
-		kb := api.UpdateKeyBody{OldPassword: args[1], NewPassword: args[2]}
-		client := &http.Client{}
-		req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(kb.Marshal()))
-		if err != nil {
-			log.Fatalf("error fetching %s", url)
-			return
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Fatalf("error fetching %s", url)
-			return
-		}
-		if resp.StatusCode != 204 {
-			log.Fatalf("non 204 respose code %d", resp.StatusCode)
-			return
-		}
-		out, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatalf("failed reading response body")
-			return
-		}
-		fmt.Println(out)
-	},
-}
-
-// /keys/{name} DELETE
+// /keys/delete/{name} DELETE
 var keyDelete = &cobra.Command{
-	Use:   "delete [name] [password]",
+	Use:   "delete [password] [name]",
 	Args:  cobra.ExactArgs(2),
 	Short: "Delete a key",
 	Run: func(cmd *cobra.Command, args []string) {
-		url := fmt.Sprintf("http://localhost:%d/keys/%s", server.Port, args[0])
-		kb := api.DeleteKeyBody{Password: args[1]}
-		client := &http.Client{}
-		req, err := http.NewRequest(http.MethodDelete, url, bytes.NewBuffer(kb.Marshal()))
-		if err != nil {
-			log.Fatalf("error fetching %s", url)
-			return
-		}
-		resp, err := client.Do(req)
+		url := fmt.Sprintf("http://localhost:%d/keys/delete/%s", server.Port, args[1])
+		kb := api.DeleteKeyBody{Password: args[0]}
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(kb.Marshal()))
 		if err != nil {
 			log.Fatalf("error fetching %s", url)
 			return
@@ -177,10 +158,9 @@ var keyDelete = &cobra.Command{
 }
 
 func init() {
-	keysCmd.AddCommand(keysGet)
+	keysCmd.AddCommand(keysList)
 	keysCmd.AddCommand(keysPost)
 	keysCmd.AddCommand(keyGet)
-	keysCmd.AddCommand(keyPut)
 	keysCmd.AddCommand(keyDelete)
 	rootCmd.AddCommand(keysCmd)
 }

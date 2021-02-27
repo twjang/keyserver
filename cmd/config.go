@@ -20,7 +20,7 @@ import (
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
-	"github.com/terra-project/keyserver/api"
+	"github.com/twjang/keyserver/api"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -36,20 +36,20 @@ var configCmd = &cobra.Command{
 		}
 
 		s := api.Server{
-			Port:   3000,
-			KeyDir: fmt.Sprintf("%s/.keyserver", home),
-			Node:   "http://localhost:26657",
+			Port:       3000,
+			KeyringDir: fmt.Sprintf("%s/.keyserver", home),
+			Node:       "http://localhost:26657",
 		}
 
-		if _, err := os.Stat(s.KeyDir); os.IsNotExist(err) {
-			err := os.MkdirAll(s.KeyDir, 0777)
+		if _, err := os.Stat(s.KeyringDir); os.IsNotExist(err) {
+			err := os.MkdirAll(s.KeyringDir, 0777)
 			if err != nil {
 				fmt.Println("Error creating directory:", err)
 				return
 			}
 		}
 
-		conf := fmt.Sprintf("%s/config.yaml", s.KeyDir)
+		conf := fmt.Sprintf("%s/config.yaml", s.KeyringDir)
 		if _, err := os.Stat(conf); os.IsNotExist(err) {
 			out, err := yaml.Marshal(s)
 			if err != nil {

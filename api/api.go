@@ -1,17 +1,15 @@
 package api
 
 import (
-	"errors"
+	"io"
+	"os"
 
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	gaia "github.com/cosmos/gaia/v4/app"
+	"github.com/cosmos/gaia/v4/app/params"
 	"github.com/gorilla/mux"
-	"github.com/tendermint/tendermint/libs/bytes"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	httprpcclient "github.com/tendermint/tendermint/rpc/client/http"
-	"github.com/terra-project/core/app"
-
-	"github.com/terra-project/core/x/treasury"
 )
 
 const (
@@ -19,43 +17,73 @@ const (
 	maxValidIndexalue    = int(0x80000000 - 1)
 )
 
-var cdc *codec.Codec
-
-const (
-	// Bech32PrefixAccAddr defines the Bech32 prefix of an account's address
-	Bech32PrefixAccAddr = "terra"
-	// Bech32PrefixAccPub defines the Bech32 prefix of an account's public key
-	Bech32PrefixAccPub = "terrapub"
-	// Bech32PrefixValAddr defines the Bech32 prefix of a validator's operator address
-	Bech32PrefixValAddr = "terravaloper"
-	// Bech32PrefixValPub defines the Bech32 prefix of a validator's operator public key
-	Bech32PrefixValPub = "terravaloperpub"
-	// Bech32PrefixConsAddr defines the Bech32 prefix of a consensus node address
-	Bech32PrefixConsAddr = "terravalcons"
-	// Bech32PrefixConsPub defines the Bech32 prefix of a consensus node public key
-	Bech32PrefixConsPub = "terravalconspub"
-)
+var encodingConfig params.EncodingConfig
+var cdc codec.Marshaler
+var legacyCdc *codec.LegacyAmino
 
 func init() {
-	cdc = app.MakeCodec()
+	encodingConfig = gaia.MakeEncodingConfig()
+	cdc, legacyCdc = gaia.MakeCodecs()
 	config := sdk.GetConfig()
-	config.SetCoinType(330)
-	config.SetFullFundraiserPath("44'/330'/0'/0/0")
-	config.SetBech32PrefixForAccount(Bech32PrefixAccAddr, Bech32PrefixAccPub)
-	config.SetBech32PrefixForValidator(Bech32PrefixValAddr, Bech32PrefixValPub)
-	config.SetBech32PrefixForConsensusNode(Bech32PrefixConsAddr, Bech32PrefixConsPub)
 	config.Seal()
 }
 
 // Server represents the API server
 type Server struct {
-	Port   int    `json:"port"`
-	KeyDir string `json:"key_dir"`
-	Node   string `json:"node"`
+	Port int    `json:"port"`
+	Node string `json:"node"`
 
 	Version string `yaml:"version,omitempty"`
 	Commit  string `yaml:"commit,omitempty"`
 	Branch  string `yaml:"branch,omitempty"`
+
+	// Server only supports file backend
+	KeyringDir string `json:"keyring_dir"`
+}
+
+type KeyringWrapper struct {
+	Keyring    keyring.Keyring
+	pipeReader *io.PipeReader
+	pipeWriter *io.PipeWriter
+}
+
+func (k *KeyringWrapper) Cleanup() {
+	if k != nil {
+		if k.pipeReader != nil {
+			k.pipeReader.Close()
+			k.pipeReader = nil
+		}
+		if k.pipeWriter != nil {
+			k.pipeWriter.Close()
+			k.pipeWriter = nil
+		}
+	}
+}
+
+func (s *Server) GetKeyringWrapper(password string) (*KeyringWrapper, error) {
+	os.Stdin = nil
+	passwordPipeReader, passwordPipeWriter := io.Pipe()
+	keyring, err := keyring.New(sdk.KeyringServiceName(), "file", s.KeyringDir, passwordPipeReader)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		for {
+			n, err := passwordPipeWriter.Write([]byte(password + "\n"))
+			if n == 0 || err != nil {
+				break
+			}
+		}
+	}()
+
+	var res = KeyringWrapper{
+		Keyring:    keyring,
+		pipeReader: passwordPipeReader,
+		pipeWriter: passwordPipeWriter,
+	}
+
+	return &res, nil
 }
 
 // Router returns the router
@@ -63,106 +91,11 @@ func (s *Server) Router() *mux.Router {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/version", s.VersionHandler).Methods("GET")
-	router.HandleFunc("/keys", s.GetKeys).Methods("GET")
-	router.HandleFunc("/keys", s.PostKeys).Methods("POST")
-	router.HandleFunc("/keys/{name}", s.GetKey).Methods("GET")
-	router.HandleFunc("/keys/{name}", s.PutKey).Methods("PUT")
-	router.HandleFunc("/keys/{name}", s.DeleteKey).Methods("DELETE")
+	router.HandleFunc("/keys/list", s.GetKeys).Methods("POST")
+	router.HandleFunc("/keys/create", s.PostKeys).Methods("POST")
+	router.HandleFunc("/keys/get/{name}", s.GetKey).Methods("POST")
+	router.HandleFunc("/keys/delete/{name}", s.DeleteKey).Methods("POST")
 	router.HandleFunc("/tx/sign", s.Sign).Methods("POST")
-	router.HandleFunc("/tx/broadcast", s.Broadcast).Methods("POST")
-	router.HandleFunc("/tx/bank/send", s.BankSend).Methods("POST")
-	router.HandleFunc("/tx/encode", s.EncodeTx).Methods("POST")
 
 	return router
-}
-
-// SimulateGas simulates gas for a transaction
-func (s *Server) SimulateGas(txbytes []byte) (res uint64, err error) {
-	client, err := httprpcclient.New(s.Node, "/websocket")
-	if err != nil {
-		return
-	}
-
-	result, err := client.ABCIQueryWithOptions(
-		"/app/simulate",
-		bytes.HexBytes(txbytes),
-		rpcclient.ABCIQueryOptions{},
-	)
-
-	if err != nil {
-		return
-	}
-
-	if !result.Response.IsOK() {
-		return 0, errors.New(result.Response.Log)
-	}
-
-	var simulationResult sdk.SimulationResponse
-	if err := cdc.UnmarshalBinaryLengthPrefixed(result.Response.Value, &simulationResult); err != nil {
-		return 0, err
-	}
-
-	return simulationResult.GasUsed, nil
-}
-
-// LoadTaxRate load tax-rate
-func (s *Server) LoadTaxRate() (res sdk.Dec, err error) {
-	client, err := httprpcclient.New(s.Node, "/websocket")
-	if err != nil {
-		return
-	}
-
-	result, err := client.ABCIQueryWithOptions(
-		"custom/treasury/taxRate",
-		[]byte{},
-		rpcclient.ABCIQueryOptions{},
-	)
-	if err != nil {
-		return
-	}
-
-	if !result.Response.IsOK() {
-		return sdk.ZeroDec(), errors.New(result.Response.Log)
-	}
-
-	var taxRate sdk.Dec
-	if err := cdc.UnmarshalJSON(result.Response.Value, &taxRate); err != nil {
-		return sdk.ZeroDec(), err
-	}
-
-	return taxRate, nil
-}
-
-// LoadTaxCap load tax-cap
-func (s *Server) LoadTaxCap(denom string) (res sdk.Int, err error) {
-	client, err := httprpcclient.New(s.Node, "/websocket")
-	if err != nil {
-		return
-	}
-
-	params := treasury.NewQueryTaxCapParams(denom)
-	bz, err := cdc.MarshalJSON(params)
-	if err != nil {
-		return sdk.ZeroInt(), err
-	}
-
-	result, err := client.ABCIQueryWithOptions(
-		"custom/treasury/taxCap",
-		bytes.HexBytes(bz),
-		rpcclient.ABCIQueryOptions{},
-	)
-	if err != nil {
-		return
-	}
-
-	if !result.Response.IsOK() {
-		return sdk.ZeroInt(), errors.New(result.Response.Log)
-	}
-
-	var taxRate sdk.Int
-	if err := cdc.UnmarshalJSON(result.Response.Value, &taxRate); err != nil {
-		return sdk.ZeroInt(), err
-	}
-
-	return taxRate, nil
 }

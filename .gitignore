@@ -23,3 +23,9 @@ vendor
 
 # Ignore testing directory
 test_data
+
+keyserver
+*.json
+.vscode
+.idea
+__debug_bin

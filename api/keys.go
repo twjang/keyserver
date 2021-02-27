@@ -3,28 +3,45 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 
-	"github.com/cosmos/cosmos-sdk/client/keys"
-	ckeys "github.com/cosmos/cosmos-sdk/crypto/keys"
-	"github.com/cosmos/cosmos-sdk/crypto/keys/keyerror"
+	"github.com/cosmos/cosmos-sdk/crypto/hd"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	bip39 "github.com/cosmos/go-bip39"
 	"github.com/gorilla/mux"
 )
 
-// GetKeys is the handler for the GET /keys
-func (s *Server) GetKeys(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+var notFoundMsg = "The specified item could not be found in the keyring"
 
-	kb, err := keys.NewKeyBaseFromDir(s.KeyDir)
+// GetKeyBody describes input format of some rest api endpoints
+type GetKeyBody struct {
+	Password string `json:"password"`
+}
+
+// GetKeys is the handler for the POST /keys
+func (s *Server) GetKeys(w http.ResponseWriter, r *http.Request) {
+	var m GetKeyBody
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&m)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(newError(err).marshal())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	keyringWrapper, err := s.GetKeyringWrapper(m.Password)
+	defer keyringWrapper.Cleanup()
+
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write(newError(err).marshal())
 		return
 	}
 
-	infos, err := kb.List()
+	k := keyringWrapper.Keyring
+	infos, err := k.List()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write(newError(err).marshal())
@@ -37,7 +54,7 @@ func (s *Server) GetKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keysOutput, err := ckeys.Bech32KeysOutput(infos)
+	keysOutput, err := keyring.Bech32KeysOutput(infos)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write(newError(err).marshal())
@@ -78,28 +95,15 @@ func (ak AddNewKey) Marshal() []byte {
 func (s *Server) PostKeys(w http.ResponseWriter, r *http.Request) {
 	var m AddNewKey
 
-	kb, err := keys.NewKeyBaseFromDir(s.KeyDir)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write(newError(err).marshal())
-		return
-	}
-
-	body, err := ioutil.ReadAll(r.Body)
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&m)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(newError(err).marshal())
 		return
 	}
 
-	err = json.Unmarshal(body, &m)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write(newError(err).marshal())
-		return
-	}
-
-	if m.Name == "" || m.Password == "" {
+	if m.Name == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(newError(fmt.Errorf("must include both password and name with request")).marshal())
 		return
@@ -108,7 +112,8 @@ func (s *Server) PostKeys(w http.ResponseWriter, r *http.Request) {
 	// if mnemonic is empty, generate one
 	mnemonic := m.Mnemonic
 	if mnemonic == "" {
-		_, mnemonic, _ = ckeys.NewInMemory().CreateMnemonic("inmemorykey", ckeys.English, "123456789", ckeys.Secp256k1)
+		fullFundraiserPath := sdk.FullFundraiserPath
+		_, mnemonic, _ = keyring.NewInMemory().NewMnemonic("inmemorykey", keyring.English, fullFundraiserPath, hd.Secp256k1)
 	}
 
 	if !bip39.IsMnemonicValid(mnemonic) {
@@ -129,25 +134,39 @@ func (s *Server) PostKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = kb.Get(m.Name)
+	keyringWrapper, err := s.GetKeyringWrapper(m.Password)
+	defer keyringWrapper.Cleanup()
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write(newError(err).marshal())
+		return
+	}
+	k := keyringWrapper.Keyring
+	_, err = k.Key(m.Name)
 	if err == nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(newError(fmt.Errorf("key %s already exists", m.Name)).marshal())
 		return
 	}
 
+	if err != nil && err.Error() != notFoundMsg {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(newError(err).marshal())
+	}
+
 	account := uint32(m.Account)
 	index := uint32(m.Index)
 
-	hdpath := fmt.Sprintf("44'/330'/%d'/0/%d", account, index)
-	info, err := kb.CreateAccount(m.Name, mnemonic, ckeys.DefaultBIP39Passphrase, m.Password, hdpath, ckeys.Secp256k1)
+	hdpath := fmt.Sprintf("44'/118'/%d'/0/%d", account, index)
+	info, err := k.NewAccount(m.Name, mnemonic, keyring.DefaultBIP39Passphrase, hdpath, hd.Secp256k1)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(newError(err).marshal())
 		return
 	}
 
-	keyOutput, err := ckeys.Bech32KeyOutput(info)
+	keyOutput, err := keyring.Bech32KeyOutput(info)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write(newError(err).marshal())
@@ -168,16 +187,27 @@ func (s *Server) PostKeys(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-// GetKey is the handler for the GET /keys/{name}
+// GetKey is the handler for the POST /keys/{name}
 func (s *Server) GetKey(w http.ResponseWriter, r *http.Request) {
+	var m GetKeyBody
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&m)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(newError(err).marshal())
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 
-	kb, err := keys.NewKeyBaseFromDir(s.KeyDir)
+	keyringWrapper, err := s.GetKeyringWrapper(m.Password)
+	defer keyringWrapper.Cleanup()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write(newError(err).marshal())
 		return
 	}
+	k := keyringWrapper.Keyring
 
 	vars := mux.Vars(r)
 	name := vars["name"]
@@ -194,13 +224,14 @@ func (s *Server) GetKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := kb.Get(name)
-	if keyerror.IsErrKeyNotFound(err) {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write(newError(err).marshal())
-		return
-	} else if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+	info, err := k.Key(name)
+
+	if err != nil {
+		if err.Error() == notFoundMsg {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		w.Write(newError(err).marshal())
 		return
 	}
@@ -224,74 +255,19 @@ func (s *Server) GetKey(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-type bechKeyOutFn func(keyInfo ckeys.Info) (ckeys.KeyOutput, error)
+type bechKeyOutFn func(keyInfo keyring.Info) (keyring.KeyOutput, error)
 
 func getBechKeyOut(bechPrefix string) (bechKeyOutFn, error) {
 	switch bechPrefix {
 	case "acc":
-		return ckeys.Bech32KeyOutput, nil
+		return keyring.Bech32KeyOutput, nil
 	case "val":
-		return ckeys.Bech32ValKeyOutput, nil
+		return keyring.Bech32ValKeyOutput, nil
 	case "cons":
-		return ckeys.Bech32ConsKeyOutput, nil
+		return keyring.Bech32ConsKeyOutput, nil
 	}
 
 	return nil, fmt.Errorf("invalid Bech32 prefix encoding provided: %s", bechPrefix)
-}
-
-// UpdateKeyBody update key password request REST body
-type UpdateKeyBody struct {
-	NewPassword string `json:"new_password"`
-	OldPassword string `json:"old_password"`
-}
-
-// Marshal - no-lint
-func (u UpdateKeyBody) Marshal() []byte {
-	out, err := json.Marshal(u)
-	if err != nil {
-		panic(err)
-	}
-	return out
-}
-
-// PutKey is the handler for the PUT /keys/{name}
-func (s *Server) PutKey(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	name := vars["name"]
-	var m UpdateKeyBody
-
-	kb, err := keys.NewKeyBaseFromDir(s.KeyDir)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write(newError(err).marshal())
-		return
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	err = decoder.Decode(&m)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write(newError(err).marshal())
-		return
-	}
-
-	err = kb.Update(name, m.OldPassword, func() (string, error) { return m.NewPassword, nil })
-	if keyerror.IsErrKeyNotFound(err) {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write(newError(err).marshal())
-		return
-	} else if keyerror.IsErrWrongPassword(err) {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write(newError(err).marshal())
-		return
-	} else if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write(newError(err).marshal())
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	return
 }
 
 // DeleteKeyBody request
@@ -313,13 +289,7 @@ func (s *Server) DeleteKey(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 	var m DeleteKeyBody
-
-	kb, err := keys.NewKeyBaseFromDir(s.KeyDir)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write(newError(err).marshal())
-		return
-	}
+	var err error
 
 	decoder := json.NewDecoder(r.Body)
 	err = decoder.Decode(&m)
@@ -329,17 +299,23 @@ func (s *Server) DeleteKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = kb.Delete(name, m.Password, false)
-	if keyerror.IsErrKeyNotFound(err) {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write(newError(err).marshal())
-		return
-	} else if keyerror.IsErrWrongPassword(err) {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write(newError(err).marshal())
-		return
-	} else if err != nil {
+	keyringWrapper, err := s.GetKeyringWrapper(m.Password)
+	defer keyringWrapper.Cleanup()
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		w.Write(newError(err).marshal())
+		return
+	}
+	k := keyringWrapper.Keyring
+
+	err = k.Delete(name)
+
+	if err != nil {
+		if err.Error() == notFoundMsg {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		w.Write(newError(err).marshal())
 		return
 	}
