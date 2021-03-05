@@ -9,6 +9,7 @@ POST    /keys/create
 POST    /keys/get/{name}
 POST    /keys/delete/{name}
 POST    /tx/sign
+POST    /tx/encode
 ```
 
 First, build and start the server:

@@ -97,6 +97,7 @@ func (s *Server) Router() *mux.Router {
 	router.HandleFunc("/keys/get/{name}", s.GetKey).Methods("POST")
 	router.HandleFunc("/keys/delete/{name}", s.DeleteKey).Methods("POST")
 	router.HandleFunc("/tx/sign", s.Sign).Methods("POST")
+	router.HandleFunc("/tx/encode", s.Encode).Methods("POST")
 
 	return router
 }

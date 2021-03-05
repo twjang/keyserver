@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -69,7 +70,46 @@ var txSign = &cobra.Command{
 	},
 }
 
+var txEncode = &cobra.Command{
+	Use:   "encode [tx-file]",
+	Args:  cobra.ExactArgs(1),
+	Short: "Encode a Json-formatted transaction to a binary-formatted transaction",
+	Run: func(cmd *cobra.Command, args []string) {
+		txData, err := ioutil.ReadFile(args[0])
+		if err != nil {
+			log.Fatal("error reading transaction file")
+		}
+
+		postData := api.EncodeBody{
+			Tx: txData,
+		}
+
+		postBytes, err := json.Marshal(postData)
+		if err != nil {
+			panic(err)
+		}
+
+		url := fmt.Sprintf("http://localhost:%d/tx/encode", server.Port)
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(postBytes))
+		if err != nil {
+			log.Fatalf("error fetching %s", url)
+			return
+		}
+		out, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatalf("failed reading response body")
+			return
+		}
+		if resp.StatusCode != 200 {
+			log.Fatalf("non 200 respose code %d, error: %s", resp.StatusCode, string(out))
+			return
+		}
+		fmt.Println(string(out))
+	},
+}
+
 func init() {
 	txCmd.AddCommand(txSign)
+	txCmd.AddCommand(txEncode)
 	rootCmd.AddCommand(txCmd)
 }
