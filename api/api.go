@@ -70,10 +70,18 @@ func (s *Server) GetKeyringWrapper(password string) (*KeyringWrapper, error) {
 	}
 
 	go func() {
+		idx := 0
+		buff := password + "\n"
 		for {
-			n, err := passwordPipeWriter.Write([]byte(password + "\n"))
+			n, err := passwordPipeWriter.Write([]byte(buff[idx : idx+1]))
 			if n == 0 || err != nil {
 				break
+			}
+
+			idx++
+
+			if idx >= len(buff) {
+				idx = 0
 			}
 		}
 	}()
